@@ -1,6 +1,6 @@
 import os
 import glob
-from libs.compute_params import GMProcessWaveforms
+from evnt.parse.compute_params import GMProcessWaveforms
 import inspect
 
 building_data_dir = "/Users/utpalkumar/Library/CloudStorage/Box-Box/NSMP/buildings/motions_ready"
