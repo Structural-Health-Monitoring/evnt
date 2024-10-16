@@ -92,7 +92,7 @@ def read_series(
     **kwds
 ) -> QuakeSeries:
 
-        txt_header, int_header, real_header, comments, data = _read_smc(read_file, archive, summarize=summarize)
+        txt_header, int_header, real_header, comments, data = read(read_file, archive, summarize=summarize)
 
         time_step = 1/float(real_header[1])
 
