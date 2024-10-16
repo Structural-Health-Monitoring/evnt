@@ -26,8 +26,12 @@ pip install evnt
 
 ```shell
 conda create --name evnt python=3.11
-python -m pip install -e .
 python -m pip install evnt
+```
+OR (for an editable install)
+```shell
+conda create --name evnt python=3.11
+python -m pip install -e .
 ```
 
 ## Events parsed using `parse` submodule
