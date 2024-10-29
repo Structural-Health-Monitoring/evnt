@@ -15,14 +15,13 @@ from collections import defaultdict
 
 import numpy as np
 
-from quakeio.core import (
-    QuakeCollection,
-    QuakeMotion,
-    QuakeComponent,
-    QuakeSeries,
+from evnt.core import (
+    EventRecord,
+    Vector,
+    TimeSeries,
 )
 
-from quakeio.utils.parseutils import (
+from evnt.utils.parseutils import (
     parse_sequential_fields,
     open_quake,
     RE_DECIMAL,  # Regular expression for extracting decimal values
@@ -175,17 +174,15 @@ V1_HEADER_FIELDS.update({
     )
 })
 
-def read_event(read_file, verbosity=0, summarize=False, **kwds):
+def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
     """
-    Take the name of a CSMIP zip file and extract record data for the event.
-
-    - kwds are passed to read_motion_v2
+    Take the name of a CSMIP v2 zip file and extract record data for the event.
     """
 
     components = []
-    zippath    = Path(read_file)
+    zippath    = Path(path_to_zipfile)
     archive    = zipfile.ZipFile(zippath)
-    motions    = defaultdict(QuakeMotion)
+    motions    = defaultdict(Vector)
 
     v1 = False
 
@@ -200,7 +197,7 @@ def read_event(read_file, verbosity=0, summarize=False, **kwds):
 
         v1 = True if file.endswith((".v1", ".V1")) else False
 
-        cmp = read_record_v2(file, archive, verbosity=verbosity, summarize=summarize, v1=v1, **kwds)
+        cmp = read_record(file, archive, verbosity=verbosity, summarize=summarize, v1=v1, **kwds)
         loc = _make_key(cmp.get("location_name", str(file)))
         drn = _make_key(cmp.get("component", "NA"))
 
@@ -232,28 +229,28 @@ def read_event(read_file, verbosity=0, summarize=False, **kwds):
             key=abs
         )
 
-    # Collect someother information from the first file (component)
+    # Collect some other information from the first file (component)
     first_motion    = list(motions.values())[0]
     first_component = list(first_motion.components.values())[0]
 
     date = first_component.get("date", "NA")
     metadata = {
-        "file_name": str(read_file),
-        "peak_accel": peak_accel,
-        "event_date": date,
+        "file_name":         str(path_to_zipfile),
+        "peak_accel":        peak_accel,
+        "event_date":        date,
         "station_name":      first_component.get("station_name", "NA"),
         "station_coord":     first_component.get("station.coord", "NA"),
         "record_identifier": first_component.get("record_identifier", "NA"),
         "station_number":    first_component.get("station.no", "NA")
     }
-    return QuakeCollection(dict(motions), event_date=date, meta=metadata)
+    return EventRecord(dict(motions), event_date=date, meta=metadata)
 
 
 # Fields that are not provided in the V1 format.
 V1_EXCLUDE = ("filter*", "*peak*", "*init*", "*disp*", "*velo*")
 
 
-def read_record_v2(
+def read_record(
     read_file,
     archive: zipfile.ZipFile = None,
     verbosity: int  = 0,
@@ -261,9 +258,9 @@ def read_record_v2(
     v1: bool = False,
     exclusions: tuple = (),
     **kwds
-) -> QuakeComponent:
+):
     """
-    Read a ground motion record using the CSMIP Volume 2 format
+    Read a single time series using the CSMIP .v2 (Volume 2) format
     """
     if v1:
         exclusions = V1_EXCLUDE
@@ -424,12 +421,8 @@ def read_record_v2(
     # The raw numeric header data hasnt been too useful
     # record_data["ihdr"] = list(int_header)
     # record_data["rhdr"] = list(real_header)
-    return QuakeComponent(
-        QuakeSeries(accel, meta=series_data["accel"]),
-        QuakeSeries(veloc, meta=series_data["veloc"]),
-        QuakeSeries(displ, meta=series_data["displ"]),
-        meta=record_data,
-    )
+    return TimeSeries(accel, veloc, displ, meta=record_data)
+
 
 def _process_numeric_headers_v2(ihdr, rhdr, txthdr):
     data = {}
@@ -441,21 +434,4 @@ def _process_numeric_headers_v2(ihdr, rhdr, txthdr):
     #assert ihdr[51 -1] == ihdr[52-1]
     #assert ihdr[28 -1] == ihdr[51-1]
 
-
-# Declare file types handled by this module
-FILE_TYPES = {
-    "csmip.v1":  {"type": QuakeComponent,  "read": read_record_v2},
-    "csmip.v2":  {"type": QuakeComponent,  "read": read_record_v2},
-    "csmip.v3":  {"type": QuakeComponent,  "read": read_record_v2, "spec": ""},
-    "csmip.zip": {"type": QuakeCollection, "read": read_event},
-}
-
-
-def read_record(read_file, *args):
-    file = Path(read_file)
-    if file.suffix.lower() == ".v2":
-        return read_record_v2(file)
-
-def read(read_file, input_format=None):
-    pass
 

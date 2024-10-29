@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import glob, os
 from datetime import datetime, timedelta 
-from evnt.param.asce_7_fundamental_period import get_min_max_freq_range
+from evnt.param.asce import get_min_max_freq_range
 import multitaper.mtspec as spec
 import matplotlib.dates as mdates
 from scipy.interpolate import interp1d 

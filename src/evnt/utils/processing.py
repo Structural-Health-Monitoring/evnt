@@ -12,3 +12,5 @@ class json_serialize(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+    
+    

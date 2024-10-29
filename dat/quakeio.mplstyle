@@ -1,0 +1,64 @@
+# Claudio Perez
+# claudio_perez@berkeley.edu
+
+
+## Default figure size
+# figure.figsize : 3.5, 2.625
+figure.dpi: 600
+
+## AXES
+axes.facecolor      : ffffff   # axes background color
+axes.edgecolor      : bcbcbc   # axes edge color
+axes.grid           : True
+axes.axisbelow      : True
+axes.prop_cycle : cycler('color', ['003262', 'C4820E','0000ff','3b7ea1', 'ffd31d','003262','c4820e','f1d1d1','888888','1f1f6b']) #,'3990b5', ,'fdb515' (gold)
+# axes.linewidth : 0.5
+
+# axes3d.facecolor : 'w'
+
+## GRID
+grid.color : eeeeee #ffffff 
+grid.alpha : 1.0
+grid.linestyle : dotted # solid, dashed, dashdot, dotted, none, ' ', ''
+# grid.linewidth : 0.5
+
+## X axis
+# xtick.direction : in
+# xtick.major.size : 3
+# xtick.major.width : 0.5
+# xtick.minor.size : 1.5
+# xtick.minor.width : 0.5
+# xtick.minor.visible : True
+# xtick.top : True
+
+## Y axis
+# ytick.direction : in
+# ytick.major.size : 3
+# ytick.major.width : 0.5
+# ytick.minor.size : 1.5
+# ytick.minor.width : 0.5
+# ytick.minor.visible : True
+# ytick.right : True
+
+# # Lines
+# lines.linewidth : 1.
+lines.markersize: 6
+
+# LEGEND
+legend.frameon : False
+
+# Save Layout
+savefig.bbox : tight
+savefig.pad_inches : 0.05
+
+# FONT
+#font.serif : FreightBig Pro, 18482, 18484, 18496, Computer Modern,freight-big-pro
+font.serif : Computer Modern
+font.family : serif
+font.weight : light
+mathtext.fontset : cm
+
+# LaTeX 
+text.usetex : True
+text.latex.preamble : \usepackage{amsmath}
+

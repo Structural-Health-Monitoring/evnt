@@ -1,16 +1,21 @@
 import os
 from pathlib import Path
 from zipfile import ZipFile
+from evnt.series import core
 from matplotlib import pyplot as plt
 import json
 import numpy as np
+import pandas as pd
 import evnt
 from evnt.parse import smc, v2, v2c
 
+
 # 0) Output directory
+
 out_dir = Path("out")    # set this as the directory in which to save outputs
 if not out_dir.exists():
     os.makedirs(out_dir)
+
 
 # 1) List of `station_codes`
 
@@ -32,22 +37,32 @@ i = 0                  # set this as the event number of interest
 
 events = in_dir.glob(f"{my_station}/*p.zip")
 event = list(events)[i]
-with ZipFile(event, "r") as readfile:
-    if any(file.endswith(".smc") for file in readfile.namelist()):
-        parser = smc
-    else:
-        parser = None
-event_processed = evnt.parse.smc.read_event(event, summarize=False)
+filetype, parse_function = core.get_parser(event)
+event_processed = parse_function(event, summarize=False)
+print(event_processed.__dict__)
+name = event_processed['file_name']
+event_out_dir = out_dir/my_station/name
+if not event_out_dir.exists:
+    os.makedirs(event_out_dir)
 channel_locations = event_processed.motions
 
 fig,ax = plt.subplots()
+records = {}
 for motion in event_processed.motions.values():
+    location = motion['location_name']
+    records[location] = {}
     for component in motion.components.values():
-        location = motion['location_name']
         direction = component.get('component','?')
         if component.accel is not None: # change .accel to .veloc or .displ as needed
+            records[location][direction] = component.accel.data
             ax.plot(component.accel.data, label=f"{location} - {direction}")
 ax.legend()
-fig.savefig(out_dir/f"{my_station}")
+fig.suptitle(f"Motions for {my_station}; filetype: {filetype}")
+fig.savefig(event_out_dir/"motions")
 plt.close('all')
+from evnt.utils.processing import json_serialize
+with open(event_out_dir/"motions.json", "w") as writefile:
+    json.dump(records, writefile, cls=json_serialize)
+
+print(f"{len([record for record in records.values() if len(record)>0])} channel responses read and plotted for Station {my_station} at event {event}.")
 

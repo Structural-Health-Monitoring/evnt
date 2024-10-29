@@ -1,2 +1,0 @@
-def localize(motions):
-    pass

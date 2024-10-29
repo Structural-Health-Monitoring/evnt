@@ -1,9 +1,17 @@
 import os
+from pathlib import Path
 import glob
 from evnt.parse.compute_params import GMProcessWaveforms
 import inspect
 
-building_data_dir = "/Users/utpalkumar/Library/CloudStorage/Box-Box/NSMP/buildings/motions_ready"
+# Set the directory where you have saved the zip files
+# building_data_dir = "/Users/utpalkumar/Library/CloudStorage/Box-Box/NSMP/buildings/motions_ready"
+building_data_dir = "/Users/cchern/seismology/NSMP/buildings/motions_ready"
+
+# Set a directory in which to save outputs
+out_dir = Path("out")
+if not out_dir.exists:
+    os.mkdirs(out_dir)
 
 ## All stations
 all_stations_dir = glob.glob(os.path.join(building_data_dir, "*"))

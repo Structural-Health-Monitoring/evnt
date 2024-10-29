@@ -82,6 +82,7 @@ dependencies:
       - bottle
       - dataclasses-json
       - deprecated
+      - evnt
       - marshmallow
       - mypy-extensions
       - openbim
@@ -89,7 +90,6 @@ dependencies:
       - plotly
       - pygltflib
       - pyyaml
-      - quakeio
       - scipy
       - sees
       - shps
