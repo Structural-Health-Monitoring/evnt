@@ -11,7 +11,7 @@ csmip_dir = Path("dat/58658_007_20210426_10.09.54.P/")
 # Event Record (.zip with .v2)
 #----------------------------------------------------------------------
 def test_read_event():
-    return evnt.read(csmip_archive, verbosity=12)
+    return evnt.read(csmip_archive)
 
 def test_unique():
     event = test_read_event()
@@ -23,42 +23,33 @@ def test_unique():
 # Time series (.v2)
 #----------------------------------------------------------------------
 def test_2():
-    csmip_record = evnt.parse.v2.read_record(csmip_dir / "chan001.v2")
+    csmip_series = evnt.parse.v2.read_record(csmip_dir / "chan001.v2")
     with open("-", "w") as writefile:
-        json.dump(csmip_record, writefile)
-
+        json.dump(csmip_series, writefile)
 
 def test_read():
-    csmip_record = evnt.read(csmip_dir / "chan001.v2")
-    evnt.write("-", csmip_record, "yaml", summarize=True)
-    return csmip_record
-
+    csmip_series = evnt.read(csmip_dir / "chan001.v2")
+    with open("-", "w") as writefile:
+        json.dump(csmip_series, writefile)
+    return csmip_series
 
 def test_peak():
-    csmip_motion = test_read()
-    assert csmip_motion.accel["peak_value"] == 17.433
-    assert csmip_motion.veloc["peak_value"] == 0.205
-    assert csmip_motion.displ["peak_value"] == -0.004
-
-
-def test_peak_time():
-    csmip_motion = test_read()
-    assert csmip_motion.accel["peak_time"] == 20.270
-    assert csmip_motion.veloc["peak_time"] == 20.290
-    assert csmip_motion.displ["peak_time"] == 20.270
+    series = test_read()
+    assert series["peak_accel"] == 17.433
+    assert series["peak_veloc"] == 0.205
+    assert series["peak_displ"] == -0.004
 
 def test_accel_data():
-    csmip_record = test_read()
-    assert csmip_record.accel.data[0]  == -0.000102
-    assert csmip_record.accel.data[-1] ==  0.000105
+    series = test_read()
+    assert series.accel[0]  == -0.000102
+    assert series.accel[-1] ==  0.000105
 
 def test_veloc_data():
-    csmip_record = test_read()
-    assert csmip_record.veloc.data[0]  == 0.0000950
-    assert csmip_record.veloc.data[-1] == 0.0001009
+    series = test_read()
+    assert series.veloc[0]  == 0.0000950
+    assert series.veloc[-1] == 0.0001009
 
 
-# csmip_record = quakeio.QuakeComponent(csmip_dir/"chan001.v2")
 if __name__ == "__main__":
     import sys, yaml
     from pathlib import Path

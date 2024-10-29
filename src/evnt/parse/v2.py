@@ -197,9 +197,9 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
 
         v1 = True if file.endswith((".v1", ".V1")) else False
 
-        cmp = read_record(file, archive, verbosity=verbosity, summarize=summarize, v1=v1, **kwds)
-        loc = _make_key(cmp.get("location_name", str(file)))
-        drn = _make_key(cmp.get("component", "NA"))
+        series = read_record(file, archive, verbosity=verbosity, summarize=summarize, v1=v1, **kwds)
+        loc = _make_key(series.get("location_name", str(file)))
+        drn = _make_key(series.get("component", "NA"))
 
         # Check that a Component with this direction has not already been
         # added to the Motion container under this location. This should
@@ -208,7 +208,7 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
             loc += "_alt"
 
         motions[loc]["key"] = loc
-        motions[loc].components[drn] = cmp
+        motions[loc].components[drn] = series
 
 
     # EVENT-LEVEL METADATA
@@ -218,14 +218,14 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
     # so in this case they are computed manually.
     if v1 and not summarize:
         peak_accel = max(
-            (max(c.accel.data, key=abs) for m in motions.values() for c in m.components.values()),
+            (max(c.accel, key=abs) for m in motions.values() for c in m.components.values()),
             key=abs
         )
 
     # Otherwise, just take the peaks from the parsed metadata.
     else:
         peak_accel = max(
-            (c.accel.get("peak_value", 0.0) for m in motions.values() for c in m.components.values()),
+            (c["peak_accel"] for m in motions.values() for c in m.components.values()),
             key=abs
         )
 

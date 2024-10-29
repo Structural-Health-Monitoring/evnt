@@ -12,13 +12,12 @@ from collections import defaultdict
 
 import numpy as np
 
-from quakeio.utils.parseutils import open_quake
+from evnt.utils.parseutils import open_quake
 
-from quakeio.core import (
-     QuakeCollection,
-     QuakeMotion,
-     QuakeComponent,
-     QuakeSeries,
+from evnt.core import (
+     EventRecord,
+     Vector,
+     TimeSeries
 )
 
 # TODO: A utility to convert general strings into
@@ -29,96 +28,8 @@ _make_key = lambda strng: strng.strip().replace(" ", "_").lower()
 # def read(file)->"":
 #     pass
 
-def read(read_file, archive = None, summarize=False):
-    NUM_COLUMNS = 8
 
-    with open_quake(read_file, "r", archive) as f:
-
-        # Text header; first 11 lines
-        txt_header = [next(f) for _ in range(11)]
-
-        # 48 integer values spanning 6 lines
-        int_header = np.genfromtxt(
-            f,
-            dtype=int,
-            max_rows=5,
-            ).flatten()
-        int_header = np.append(int_header , np.genfromtxt(
-            f,
-            dtype=int,
-            max_rows=1,
-            ).flatten()
-        )
-        assert len(int_header) == 48
-
-        # Value representing "undefined" or "null" in the integer header.
-        int_null = int_header[0]
-
-        # real_header = [next(f) for _ in range(10)]
-
-        real_header = np.genfromtxt(
-          f,
-          max_rows= 10,
-#         delimiter=10,
-        ).flatten()
-
-        num_comment_lines = int_header[15]
-        len_accel = int_header[16]
-
-        # Parse comments
-        comments = [str(next(f)) for _ in range(num_comment_lines)]
-
-        # Parse data
-
-        if not summarize:
-            options = dict(
-                delimiter=10,
-                # skip_header=HEADER_END_LINE + 1,
-                #
-            )
-            data = np.genfromtxt(f, max_rows=np.ceil(len_accel/NUM_COLUMNS) - 1, **options).flatten()
-            data = np.append(data, np.genfromtxt(f, max_rows=1, **options))
-        else:
-            data = []
-
-    return txt_header, int_header, real_header, comments, data
-
-def read_series(
-    read_file,
-    archive: zipfile.ZipFile = None,
-    verbosity: int  = 0,
-    summarize: bool =False,
-    exclusions: tuple = (),
-    **kwds
-) -> QuakeSeries:
-
-        txt_header, int_header, real_header, comments, data = read(read_file, archive, summarize=summarize)
-
-        time_step = 1/float(real_header[1])
-
-        station = txt_header[5][10:].decode().split("component")[0].strip()
-        location = station 
-        for line in comments:
-            if "<loclbl" in line:
-                location = line[12:line.find("<end>")]
-                break
-
-        motion_data = {
-            "component":       int(int_header[12]),
-            "location_name":   location,
-            "key":             _make_key(str(txt_header[5][10:]).split("component")[0].strip()),
-            "station_channel": str(int_header[8]),
-            "time_step":       time_step
-        }
-
-        return QuakeSeries(data, meta={"type": txt_header[0].decode(),
-                                       "ihdr": int_header,
-                                       "rhdr": real_header,
-                                       "time_step": time_step}), motion_data
-
-
-
-def read_event(read_file, verbosity=0, summarize=False, **kwds)->QuakeCollection:
+def read(read_file, verbosity=0, summarize=False, **kwds)->EventRecord:
     """
     """
 
@@ -177,8 +88,8 @@ def read_event(read_file, verbosity=0, summarize=False, **kwds)->QuakeCollection
 
     date = None
     motions = {
-            k: QuakeMotion({
-                dir: QuakeComponent(
+            k: Vector({
+                dir: TimeSeries(
                        component.get("accel", None),
                        component.get("veloc", None),
                        component.get("displ", None),
@@ -204,7 +115,95 @@ def read_event(read_file, verbosity=0, summarize=False, **kwds)->QuakeCollection
         # "record_identifier": first_component.get("record_identifier", "NA"),
         # "station_number":    first_component.get("station.no", "NA")
     }
-    return QuakeCollection(motions, event_date=date, meta=metadata)
+    return EventRecord(motions, event_date=date, meta=metadata)
 
+
+def read_record(read_file, archive = None, summarize=False):
+    NUM_COLUMNS = 8
+
+    with open_quake(read_file, "r", archive) as f:
+
+        # Text header; first 11 lines
+        txt_header = [next(f) for _ in range(11)]
+
+        # 48 integer values spanning 6 lines
+        int_header = np.genfromtxt(
+            f,
+            dtype=int,
+            max_rows=5,
+            ).flatten()
+        int_header = np.append(int_header , np.genfromtxt(
+            f,
+            dtype=int,
+            max_rows=1,
+            ).flatten()
+        )
+        assert len(int_header) == 48
+
+        # Value representing "undefined" or "null" in the integer header.
+        int_null = int_header[0]
+
+        # real_header = [next(f) for _ in range(10)]
+
+        real_header = np.genfromtxt(
+          f,
+          max_rows= 10,
+#         delimiter=10,
+        ).flatten()
+
+        num_comment_lines = int_header[15]
+        len_accel = int_header[16]
+
+        # Parse comments
+        comments = [str(next(f)) for _ in range(num_comment_lines)]
+
+        # Parse data
+
+        if not summarize:
+            options = dict(
+                delimiter=10,
+                # skip_header=HEADER_END_LINE + 1,
+                #
+            )
+            data = np.genfromtxt(f, max_rows=np.ceil(len_accel/NUM_COLUMNS) - 1, **options).flatten()
+            data = np.append(data, np.genfromtxt(f, max_rows=1, **options))
+        else:
+            data = []
+
+    return txt_header, int_header, real_header, comments, data
+
+
+def read_series(
+    read_file,
+    archive: zipfile.ZipFile = None,
+    verbosity: int  = 0,
+    summarize: bool =False,
+    exclusions: tuple = (),
+    **kwds
+) -> TimeSeries:
+
+        txt_header, int_header, real_header, comments, data = read(read_file, archive, summarize=summarize)
+
+        time_step = 1/float(real_header[1])
+
+        station = txt_header[5][10:].decode().split("component")[0].strip()
+        location = station 
+        for line in comments:
+            if "<loclbl" in line:
+                location = line[12:line.find("<end>")]
+                break
+
+        motion_data = {
+            "component":       int(int_header[12]),
+            "location_name":   location,
+            "key":             _make_key(str(txt_header[5][10:]).split("component")[0].strip()),
+            "station_channel": str(int_header[8]),
+            "time_step":       time_step
+        }
+
+        return TimeSeries(data, meta={"type": txt_header[0].decode(),
+                                       "ihdr": int_header,
+                                       "rhdr": real_header,
+                                       "time_step": time_step}), motion_data
 
 
