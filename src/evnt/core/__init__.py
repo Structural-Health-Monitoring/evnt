@@ -135,8 +135,8 @@ class Vector(dict):
 
 class TimeSeries(dict):
     """
-    Collects the acceleration (`accel`), velocity (`veloc`), and
-    displacement (`displ`) at a single component.
+    Collects the acceleration (`.accel`), velocity (`.veloc`), and
+    displacement (`.displ`) at a single component.
     """
 
     def __init__(self, accel, veloc, displ, dt=None, time_zero=None, record=None, meta=None):
