@@ -13,7 +13,7 @@ import numpy as np
 class EventRecord(dict):
     """
     An event record at a single station, as a collection of `TimeSeries` objects.
-    Initialized using a dictionary of `'location'`:`TimeSeries` pairs.
+    Initialized using a dictionary of `'key'`:`TimeSeries` pairs.
     """
 
     def __init__(self,
@@ -188,14 +188,28 @@ class TimeSeries(dict):
         return self._time
 
 
+class MetaData(dict):
+    """
+    Collects metadata for objects with safe and coherent access
+    through keys, properties, and attributes.
+    """
+    def __init__(self,
+                 parent,
+                 **kwds):
+        
+        dict.__init__(self)
+
+        self.update(parent.meta)
+
+
 
 from evnt.parse import smc, v2, v2c
-ZIP_PARSING_FUNCTIONS = {
+EVENT_PARSING_FUNCTIONS = {
     'v2': v2.read,
     'v2c': v2c.read,
     'smc': smc.read,
 }
-FILE_PARSING_FUNCTIONS = {
+SERIES_PARSING_FUNCTIONS = {
     'v2': v2.read_record,
     'v2c': v2c.read_record,
     'smc': smc.read_record,
@@ -215,18 +229,21 @@ def get_parser(path_to_file):
     path_to_file = Path(path_to_file)
 
     # if it's a zip file, assume it's an event collection
+    # and will be parsed into an `EventRecord`
     if path_to_file.suffix.lower()==".zip":
         # open zip file
         with ZipFile(path_to_file, "r") as readfile:
             # check all available file types
-            for filetype, parse_function in ZIP_PARSING_FUNCTIONS.items():
+            for filetype, parse_function in EVENT_PARSING_FUNCTIONS.items():
                 # if found, return file type and corresponding parser
                 if any(Path(file).suffix.lower()==f".{filetype}" for file in readfile.namelist()):
                     return filetype, parse_function     
                   
     # otherwise, assume it's an individual series file
+    # and will be parsed into a `TimeSeries`
     else:
-        for filetype, parse_function in FILE_PARSING_FUNCTIONS.items():
+        # check all available file types
+        for filetype, parse_function in SERIES_PARSING_FUNCTIONS.items():
             # if found, return file type and corresponding parser
             if path_to_file.suffix.lower()==f".{filetype}":
                 return filetype, parse_function   
