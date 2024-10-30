@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from zipfile import ZipFile
-from evnt.series import core
+from evnt import core
 from matplotlib import pyplot as plt
 import json
 import numpy as np
@@ -30,7 +30,7 @@ with open(out_dir/"station_codes.txt", "w") as writefile:
     print(station_codes, file=writefile)
 
 
-# 2) Read the data from the all events of all stations
+# 2) Read the data from all events of all stations
 
 from evnt.utils.processing import json_serialize
 for station in station_codes:
@@ -57,9 +57,9 @@ for station in station_codes:
                     ax.plot(component.accel.data, label=f"{location} - {direction}")
         ax.legend()
         fig.suptitle(f"Motions for {station}\nfiletype: {filetype}\nfile: {name}")
-        fig.savefig(station_out_dir/f"{name}")
+        fig.savefig(event_out_dir/"motion")
         plt.close('all')
-    with open(station_out_dir/f"{station}.json", "w") as writefile:
+    with open(event_out_dir/"motions.json", "w") as writefile:
         json.dump(records, writefile, cls=json_serialize)
 
         print(f">> Processed {station} {name}")

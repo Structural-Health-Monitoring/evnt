@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from zipfile import ZipFile
-from evnt.series import core
+from evnt import core
 from matplotlib import pyplot as plt
 import json
 import numpy as np
