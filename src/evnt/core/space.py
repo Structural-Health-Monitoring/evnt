@@ -1,21 +1,5 @@
 import warnings
 
-a = dict(...)
-
-
-a["hi"]
-
-def __getitem__(self, key):
-    pass 
-
-class A(dict):
-    def __init__(self, **data):
-        dict.__init__(self, **data)
-
-
-a = A(key=1)
-
-
 def localize(serieses,**kwds):
     """
     A dictionary mapping unique locations to lists of `TimeSeries` objects.
