@@ -16,7 +16,7 @@ def test_read_event():
 def test_unique():
     event = test_read_event()
     all_components = [c for m in event.serieses.values() for c in m.components]
-    #all_components = [m for m in event.motions]# for c in m.components]
+    print(event.serieses)
     assert len(all_components) == 20
 
 #----------------------------------------------------------------------
