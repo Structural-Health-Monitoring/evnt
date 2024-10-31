@@ -1,54 +1,66 @@
 """
 core classes and functions of `evnt`.
-classes: `EventRecord`, `Vector`, and `TimeSeries`
+classes: `Record`, `Vector`, and `TimeSeries`
 functions: `get_parser`
 """
-from copy import copy
 from pathlib import Path
 from zipfile import ZipFile
 import warnings
 import numpy as np
 
 
-class EventRecord(dict):
+
+class Record():
     """
     An event record at a single station, as a collection of `TimeSeries` objects.
-    Initialized using a dictionary of `'key'`:`TimeSeries` pairs.
     """
 
-    def __init__(self,
-                 serieses:dict,
-                 event_date=None,
-                 meta:dict=None,
-                 **kwds):
+    def __init__(self, series, meta=None):
         
-        dict.__init__(self)
+        self.meta = meta if meta is not None else MetaData(self)
 
-        self.serieses = serieses
-        self.event_date = event_date
+        self.series = series
+        self.event_date = meta.get('event_date',None)
         
-        self.update(meta if meta is not None else {})
-        for series in serieses.values():
-            series._parent = self
+        for s in series:
+            s._parent = self
 
     def __repr__(self):
-        return f"EventRecord({dict.__repr__(self)})"
+        return f"Record({dict.__repr__(self)})"
 
-    def get_series(self, **kwds):
+            
+
+    def filter(self, **kwds)->list:
         """
-        Look for a `TimeSeries` in this record that satisfies all
+        Returns all `TimeSeries` in this record that satisfy
+        the properties specified by `kwds`.
+        """
+        series = []
+        for s in self.series:
+            if all(s[k] == v for k, v in kwds.items()):
+                series.append(s)
+        return series
+
+
+    def find(self, **kwds)->"TimeSeries":
+        """
+        Find the `TimeSeries` in this record that satisfies all
         of the properties specified by `kwds`.
-        Only returns the first found.
+        Assumes there is exactly one.
+        If multiple or none are found, an exception is raised.
         """
-        for series in self.serieses.values():
-            if all(series[k] == v for k, v in kwds.items()):
-                return series
+        series = self.filter(**kwds)
+        if len(series) >= 1:
+            raise Exception("Multiple TimeSeries found. (Use core.filter)")
+        elif len(series) == 0:
+            raise Exception("No matching TimeSeries found.")
+        else:
+            return series
 
 
-class Vector(dict):
+class Vector():
     """
     A collection of `TimeSeries` objects at a single location.
-    Initialized using a dictionary of `'direction'`:`TimeSeries` pairs.
     """
     def _update_components(f):
         def wrapped(*args, **kwds):
@@ -133,54 +145,57 @@ class Vector(dict):
         return TimeSeries(*vector_norm.values())
 
 
-class TimeSeries(dict):
+class TimeSeries():
     """
     Collects the acceleration (`.accel`), velocity (`.veloc`), and
     displacement (`.displ`) at a single component.
+    Initialized using at least one of accel, veloc, or displ.
     """
 
-    def __init__(self, accel, veloc, displ, dt=None, time_zero=None, record=None, meta=None):
-        dict.__init__(self)
+    def __init__(self, accel=None, veloc=None, displ=None,
+                 meta=None):
 
         if not any(i is not None for i in (accel, veloc, displ)):
             raise ValueError("One of accel, veloc or displ must be non-None")
         
-        self.update(meta if meta is not None else {})
+        self.meta = meta if meta is not None else MetaData(self)
 
         self.accel = accel
         self.veloc = veloc
         self.displ = displ
-            
-        self._parent = record
 
-        self.npts = None
+        self.npts = meta.get('npts',None)
+        self.time_step = meta.get('time_step',None)
+        self.start_time = meta.get('start_time',None)
         
         for data in (self.accel, self.veloc, self.displ):
             if data is not None:
+                data = np.asarray(data)
                 assert data.ndim == 1
                 if self.npts is None:
                     self.npts = len(data)
 
-        self.time_step = dt
-        self.time_zero = time_zero
 
     def __repr__(self):
         if 'file_name' in self:
             return f"TimeSeries({self['file_name']}) at {hex(id(self))}"
         else:
             return f"TimeSeries object at {hex(id(self))}"
+        
 
     @property
-    def time(self):
+    def time(self,**kwds):
         if self._time is None:
             npts = self.npts
-            if self.time_zero is None:
-                warnings.warn("No time_zero specified. Time array will begin at 0.0s.")
+            if self.start_time is None:
+                if kwds.get('verbosity',0) >= 2:
+                    warnings.warn("No start time specified. Time array will begin at 0.0s.")
                 t0 = 0.0
             else:
-                t0 = self.time_zero
+                t0 = self.start_time
             if self.time_step is None:
-                warnings.warn("No timestep given. Time array will use 1s sampling time.")
+                if kwds.get('verbosity',0) >= 2:
+                    warnings.warn("No timestep given. Time array will use 1s sampling time.")
                 self._time = np.arange(t0,t0+npts,1)
             else:
                 dt = self.time_step
@@ -215,7 +230,7 @@ SERIES_PARSING_FUNCTIONS = {
     'smc': smc.read_record,
 }
 
-def get_parser(path_to_file):
+def get_parser(path_to_file,**kwds):
     """
     Returns the file type and parser to use on the files in the zip.
 
@@ -229,7 +244,7 @@ def get_parser(path_to_file):
     path_to_file = Path(path_to_file)
 
     # if it's a zip file, assume it's an event collection
-    # and will be parsed into an `EventRecord`
+    # and will be parsed into an `Record`
     if path_to_file.suffix.lower()==".zip":
         # open zip file
         with ZipFile(path_to_file, "r") as readfile:
@@ -249,6 +264,53 @@ def get_parser(path_to_file):
                 return filetype, parse_function   
             
     # if not found, warn and return None for both file type and parser
-    warnings.warn(f"No valid parser found for the file {path_to_file}.")
+    if kwds.get('verbosity',0)>=0:
+        warnings.warn(f"No valid parser found for the file {path_to_file}.")
     return None, None
 
+
+def record_packer(series,record:Record=None,**kwds)->Record:
+    """
+    Packs a collection of `TimeSeries` objects into a `Record` object.
+    Uses the `channel_number` attribute as the key of each `TimeSeries`.
+    If no `channel_number` is found, the `'NoChannel'` key is assigned.
+    """
+    if record is None:
+        record = Record({})
+    for s in series:
+        # set the key as the channel number if it exists
+        try:
+            key = s['channel_number']
+        # otherwise, assign 'NoChannel' key
+        except KeyError as e:
+            if kwds.get('verbosity',0)>=2:
+                warnings.warn("Attempting to pack a TimeSeries with no channel number into a Record. The 'NoChannel' key will be used.")
+            key = 'NoChannel'
+        # if the record already has a `TimeSeries` for this key
+        # (except for the 'NoChannel' key)
+        # merge this new `TimeSeries` in with the existing.
+        if key in record:
+            s_merge = record[key]
+            # set the accel, veloc, and/or displ attr of the existing
+            # `TimeSeries` with the current `TimeSeries`.
+            for attr in 'accel','veloc','displ':
+                if hasattr(s,attr):
+                    # if the existing `TimeSeries` already has this
+                    # attr, warn before replacing it.
+                    if hasattr(s_merge,attr):
+                        if kwds.get('verbosity',0)>=2:
+                            warnings.warn(f"Multiple TimeSeries with the key {key} were found for Record {Record}. Preceding TimeSeries will be replaced.")
+                    setattr(s_merge,attr,getattr(s,attr))
+        # otherwise, go ahead and and update the record.
+        else:
+            record[key] = s
+    return record
+
+
+def vector_packer(series):
+    """
+    Packs a collection of `TimeSeries` objects into a `Vector` object.
+    Uses the `component` attribute as the key of each `TimeSeries`.
+    If no `component` is found, the `"NoComponent"` key is assigned.
+    """
+    pass

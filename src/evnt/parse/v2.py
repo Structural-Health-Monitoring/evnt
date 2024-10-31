@@ -16,7 +16,7 @@ from collections import defaultdict
 import numpy as np
 
 from evnt.core import (
-    EventRecord,
+    Record,
     Vector,
     TimeSeries,
 )
@@ -243,7 +243,7 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
         "record_identifier": first_component.get("record_identifier", "NA"),
         "station_number":    first_component.get("station.no", "NA")
     }
-    return EventRecord(dict(motions), event_date=date, meta=metadata)
+    return Record(dict(motions), event_date=date, meta=metadata)
 
 
 # Fields that are not provided in the V1 format.

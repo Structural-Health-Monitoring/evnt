@@ -15,7 +15,7 @@ import numpy as np
 from evnt.utils.parseutils import open_quake
 
 from evnt.core import (
-     EventRecord,
+     Record,
      Vector,
      TimeSeries
 )
@@ -29,7 +29,7 @@ _make_key = lambda strng: strng.strip().replace(" ", "_").lower()
 #     pass
 
 
-def read(read_file, verbosity=0, summarize=False, **kwds)->EventRecord:
+def read(read_file, verbosity=0, summarize=False, **kwds)->Record:
     """
     """
 
@@ -115,10 +115,14 @@ def read(read_file, verbosity=0, summarize=False, **kwds)->EventRecord:
         # "record_identifier": first_component.get("record_identifier", "NA"),
         # "station_number":    first_component.get("station.no", "NA")
     }
-    return EventRecord(motions, event_date=date, meta=metadata)
+    return Record(motions, event_date=date, meta=metadata)
 
 
 def read_record(read_file, archive = None, summarize=False):
+    """
+    reads a single .smc file. it could be a.smc (accel),
+    v.smc (veloc), or d.smc (displ).
+    """
     NUM_COLUMNS = 8
 
     with open_quake(read_file, "r", archive) as f:
@@ -181,29 +185,32 @@ def read_series(
     exclusions: tuple = (),
     **kwds
 ) -> TimeSeries:
+    """
+    reads a single .smc file. it could be a.smc (accel),
+    v.smc (veloc), or d.smc (displ).
+    """
+    txt_header, int_header, real_header, comments, data = read_record(read_file, archive, summarize=summarize)
 
-        txt_header, int_header, real_header, comments, data = read(read_file, archive, summarize=summarize)
+    time_step = 1/float(real_header[1])
 
-        time_step = 1/float(real_header[1])
+    station = txt_header[5][10:].decode().split("component")[0].strip()
+    location = station 
+    for line in comments:
+        if "<loclbl" in line:
+            location = line[12:line.find("<end>")]
+            break
 
-        station = txt_header[5][10:].decode().split("component")[0].strip()
-        location = station 
-        for line in comments:
-            if "<loclbl" in line:
-                location = line[12:line.find("<end>")]
-                break
+    motion_data = {
+        "component":       int(int_header[12]),
+        "location_name":   location,
+        "key":             _make_key(str(txt_header[5][10:]).split("component")[0].strip()),
+        "station_channel": str(int_header[8]),
+        "time_step":       time_step
+    }
 
-        motion_data = {
-            "component":       int(int_header[12]),
-            "location_name":   location,
-            "key":             _make_key(str(txt_header[5][10:]).split("component")[0].strip()),
-            "station_channel": str(int_header[8]),
-            "time_step":       time_step
-        }
-
-        return TimeSeries(data, meta={"type": txt_header[0].decode(),
-                                       "ihdr": int_header,
-                                       "rhdr": real_header,
-                                       "time_step": time_step}), motion_data
+    return TimeSeries([d for d in data], meta={"type": txt_header[0].decode(),
+                                    "ihdr": int_header,
+                                    "rhdr": real_header,
+                                    "time_step": time_step}), motion_data
 
 
