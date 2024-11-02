@@ -2,7 +2,23 @@
 core classes and functions of `evnt`.
 classes: `Record`, `Vector`, and `TimeSeries`
 functions: `get_parser`
+
+`Record`
+    `.series`: list of `TimeSeries`
+    `.meta`: dictionary-like `MetaData` object
+    `for i in Record` to iterate through `.series` # TODO: How to implement this??
+
+`Vector`
+    `components`: dictionary of `'dirn'`:`TimeSeries`
+    `.meta`: dictionary-like `MetaData` object
+    `for i in Vector` to iterate through `.series`
+
+`TimeSeries`
+    `.accel`, `.veloc`, `.displ`: np.ndarray
+    `.meta`: dictionary-like `MetaData` object
+
 """
+
 from pathlib import Path
 from zipfile import ZipFile
 import warnings
@@ -10,25 +26,39 @@ import numpy as np
 
 
 
-class Record():
+class Record:
     """
-    An event record at a single station, as a collection of `TimeSeries` objects.
+    An event or ambient record at a single station.
+    `.series`: list of `TimeSeries`
+    `.meta`: dictionary-like `MetaData` object
+    `for i in Record` to iterate through `.series`
     """
 
-    def __init__(self, series, meta=None):
+    def __init__(self, series, meta:"MetaData"=None):
         
-        self.meta = meta if meta is not None else MetaData(self)
+        self.meta = meta if meta is not None else MetaData()
+        # possible items in meta:
+        #   'event_date': global date and time at start of record
+        #   'event_id': network station event ID, e.g. 'nc72948801'
+        #   'building_height': height of building, if applicable
+        #   'file_name': name of file,
+        #                e.g 'berkeley_04jan2018_72948801_np1103p.zip'
 
-        self.series = series
-        self.event_date = meta.get('event_date',None)
+        self.series = list(series)
+        self._consolidate()
         
         for s in series:
             s._parent = self
 
-    def __repr__(self):
-        return f"Record({dict.__repr__(self)})"
 
-            
+    def __repr__(self):
+        if 'event_date' in self.meta.keys():
+            return f"Record({self.meta['event_date']}) at {hex(id(self))}" # TODO: is this weird?
+        elif 'file_name' in self:
+            return f"Record({self.meta['file_name']}) at {hex(id(self))}"
+        else:
+            return f"Record object at {hex(id(self))}"
+
 
     def filter(self, **kwds)->list:
         """
@@ -37,7 +67,7 @@ class Record():
         """
         series = []
         for s in self.series:
-            if all(s[k] == v for k, v in kwds.items()):
+            if all(s[k] == v for k,v in kwds.items()):
                 series.append(s)
         return series
 
@@ -56,29 +86,92 @@ class Record():
             raise Exception("No matching TimeSeries found.")
         else:
             return series
+    
+
+    def _consolidate(self,**kwds):
+        """
+        Consolidates the `TimeSeries` in the Record
+        so that there is only one `TimeSeries` per channel.
+        Raises warning if multiple `TimeSeries` are found
+        for a single channel.
+        """
+        consolidated = {}
+        unknown_channel = []
+        for s in self.series:
+            key = s.meta.get('channel',None)
+            if key is not None:
+                # if there isn't already a Timeseries
+                # at this channel, add it.
+                if key not in consolidated.keys():
+                    consolidated[key] = s
+                # if there is already a Timeseries at this
+                # channel, merge it.
+                else:
+                    existing_s = consolidated[key]
+                    # set the accel, veloc, and/or displ attr
+                    # of the existing `TimeSeries` with the 
+                    # current `TimeSeries`.
+                    for attr in 'accel','veloc','displ':
+                        if hasattr(s,attr):
+                            # if the existing `TimeSeries` already
+                            # has this attr, warn before replacing.
+                            if hasattr(existing_s,attr):
+                                if kwds.get('verbosity',0)>=0:
+                                    warnings.warn(f"Multiple TimeSeries with the key, attribute {key},{attr} were found for Record {Record}. Preceding TimeSeries will be replaced.")
+                            setattr(existing_s,attr,getattr(s,attr))
+            # if the channel is not known, the TimeSeries
+            # is blindly included.
+            else:
+                unknown_channel.append(s)
+        self.series = list(consolidated.values()).extend(unknown_channel)
 
 
-class Vector():
+    def append(self,series): # TODO: is it bad practice to name this the same as a list's append function?
+        """
+        Adds a `TimeSeries` or collection of `TimeSeries` into
+        the existing collection.
+        """
+        if isinstance(series,TimeSeries):
+            self.series.append(series)
+        elif isinstance(series,(list,tuple,set)):
+            if not all(isinstance(s,TimeSeries) for s in series):
+                raise ValueError("All items in collection must be TimeSeries.")
+            self.series.extend(list(series))
+        self._consolidate()
+
+
+
+class Vector:
     """
-    A collection of `TimeSeries` objects at a single location.
+    Has `.components`, a dictionary of `'dirn'`:`TimeSeries`
+    at a single location.
+
+    `'dirn'` includes: 'hor1', 'hor2', 'vert'.
+
+    By custom, 'hor1' is longitudinal and 'hor2' is transverse
+    when such axes exist for the station.
+
+    `components`: dictionary of `'dirn'`:`TimeSeries`
+    `.meta`: dictionary-like `MetaData` object
+    `for i in Vector` to iterate through `.series`
     """
     def _update_components(f):
         def wrapped(*args, **kwds):
             res = f(*args, **kwds)
-            [getattr(cmp,s)._refresh()
+            [getattr(cmp,attr)._refresh()
                     for cmp in res.components.values()
-                        for s in ["accel","veloc","displ"] if hasattr(cmp,s)]
+                        for attr in ["accel","veloc","displ"] if hasattr(cmp,attr)]
             return res
         return wrapped
 
     def __init__(self,
                  components:dict=None,
-                 meta:dict=None,
-                 name=None):
+                 meta:dict=None):
         
-        dict.__init__(self)
-        
-        self.update(meta if meta is not None else {})
+        self.meta = meta if meta is not None else MetaData(self)
+
+        if (components is not None) and (not isinstance(components,dict)):
+            raise TypeError("components must be a dictionary.")
 
         self.components = components if components is not None else {}
         for comp in self.components.values():
@@ -86,15 +179,15 @@ class Vector():
 
     @property
     def accel(self):
-        return np.stack(tuple(c.accel for c in self.components.values())).T
+        return np.stack(tuple(c.accel for c in self.components)).T
 
     @property
     def veloc(self):
-        return np.stack(tuple(c.veloc for c in self.components.values())).T
+        return np.stack(tuple(c.veloc for c in self.components)).T
 
     @property
     def displ(self):
-        return np.stack(tuple(c.displ for c in self.components.values())).T
+        return np.stack(tuple(c.displ for c in self.components)).T
 
     def __repr__(self):
         return f"Vector({dict.__repr__(self)})"
@@ -117,8 +210,8 @@ class Vector():
 
         try:
             for attr in ["accel", "veloc", "displ"]:
-                x = getattr(self.components["long"], attr).data
-                y = getattr(self.components["tran"], attr).data
+                x = getattr(self.components["hor1"], attr).data
+                y = getattr(self.components["hor2"], attr).data
                 X = np.array([x, y])
                 x[:] = np.dot(rx, X)
                 y[:] = np.dot(ry, X)
@@ -136,7 +229,7 @@ class Vector():
             try:
                 vector_norm[typ] = np.sqrt(sum(
                     np.power(getattr(self.components[dirn],typ), 2)
-                    for dirn in ("long", "tran", "vert")
+                    for dirn in ("hor1", "hor2", "vert")
                         if  dirn in self.components and 
                             self.components[dirn] is not None
                 ))
@@ -145,7 +238,9 @@ class Vector():
         return TimeSeries(*vector_norm.values())
 
 
-class TimeSeries():
+
+
+class TimeSeries:
     """
     Collects the acceleration (`.accel`), velocity (`.veloc`), and
     displacement (`.displ`) at a single component.
@@ -159,14 +254,21 @@ class TimeSeries():
             raise ValueError("One of accel, veloc or displ must be non-None")
         
         self.meta = meta if meta is not None else MetaData(self)
+        # possible items in meta:
+        #   'npts': number of time samples
+        #   'time_step': length of time step
+        #   'start_time': global time at start of record
+        #   'component': direction of motion, e.g. 'vert'
+        #   'channel': channel number, e.g. 3
+        #   'location': location name, e.g. '4th Floor East'
+        #   'floor': floor number
+        #   'channel_identifier': network station channel ID,
+        #                         e.g. 1103.HN2.NP.4E
+        #   'file_name': name of file, e.g 'CHAN001.v2'
 
         self.accel = accel
         self.veloc = veloc
         self.displ = displ
-
-        self.npts = meta.get('npts',None)
-        self.time_step = meta.get('time_step',None)
-        self.start_time = meta.get('start_time',None)
         
         for data in (self.accel, self.veloc, self.displ):
             if data is not None:
@@ -177,8 +279,10 @@ class TimeSeries():
 
 
     def __repr__(self):
-        if 'file_name' in self:
-            return f"TimeSeries({self['file_name']}) at {hex(id(self))}"
+        if 'channel' in self.meta.keys():
+            return f"TimeSeries({self.meta['channel']}) at {hex(id(self))}"
+        elif 'file_name' in self:
+            return f"TimeSeries({self.meta['file_name']}) at {hex(id(self))}"
         else:
             return f"TimeSeries object at {hex(id(self))}"
         
@@ -208,14 +312,16 @@ class MetaData(dict):
     Collects metadata for objects with safe and coherent access
     through keys, properties, and attributes.
     """
-    def __init__(self,
-                 parent,
-                 **kwds):
+    # def __init__(self,**kwds):
+    #     dict.__init__(self,**kwds)  # TODO: is this right?
+
+    def __setattr__(self, name, value):
+        self[name]  = value
         
-        dict.__init__(self)
-
-        self.update(parent.meta)
-
+    def __getattribute__(self, __name: str):
+        if __name in self:
+            return self[__name]
+        return super().__getattribute__(__name)
 
 
 from evnt.parse import smc, v2, v2c
@@ -244,7 +350,7 @@ def get_parser(path_to_file,**kwds):
     path_to_file = Path(path_to_file)
 
     # if it's a zip file, assume it's an event collection
-    # and will be parsed into an `Record`
+    # and will be parsed into a `Record`
     if path_to_file.suffix.lower()==".zip":
         # open zip file
         with ZipFile(path_to_file, "r") as readfile:
@@ -269,48 +375,29 @@ def get_parser(path_to_file,**kwds):
     return None, None
 
 
-def record_packer(series,record:Record=None,**kwds)->Record:
+
+def group_by_location(series):
     """
-    Packs a collection of `TimeSeries` objects into a `Record` object.
-    Uses the `channel_number` attribute as the key of each `TimeSeries`.
-    If no `channel_number` is found, the `'NoChannel'` key is assigned.
-    """
-    if record is None:
-        record = Record({})
+    A dictionary mapping unique locations to lists of `TimeSeries` objects.
+
+    :param series:     collection of `TimeSeries` objects
+    :type series:      iterable collection (list, tuple, set)
+    
+    :return:           ``motions``
+    :rtype:            dictionary
+    """    
+    if not isinstance(series,(list,tuple,set)):
+        raise TypeError("series must be a list, tuple, or set.")
+    if not all(isinstance(s,TimeSeries) for s in series):
+        raise TypeError("every item in series must be a TimeSeries.")
+    
+    motions = {}
     for s in series:
-        # set the key as the channel number if it exists
-        try:
-            key = s['channel_number']
-        # otherwise, assign 'NoChannel' key
-        except KeyError as e:
-            if kwds.get('verbosity',0)>=2:
-                warnings.warn("Attempting to pack a TimeSeries with no channel number into a Record. The 'NoChannel' key will be used.")
-            key = 'NoChannel'
-        # if the record already has a `TimeSeries` for this key
-        # (except for the 'NoChannel' key)
-        # merge this new `TimeSeries` in with the existing.
-        if key in record:
-            s_merge = record[key]
-            # set the accel, veloc, and/or displ attr of the existing
-            # `TimeSeries` with the current `TimeSeries`.
-            for attr in 'accel','veloc','displ':
-                if hasattr(s,attr):
-                    # if the existing `TimeSeries` already has this
-                    # attr, warn before replacing it.
-                    if hasattr(s_merge,attr):
-                        if kwds.get('verbosity',0)>=2:
-                            warnings.warn(f"Multiple TimeSeries with the key {key} were found for Record {Record}. Preceding TimeSeries will be replaced.")
-                    setattr(s_merge,attr,getattr(s,attr))
-        # otherwise, go ahead and and update the record.
+        # get the series location
+        loc = s.meta.get('location',None)
+        # add the series into the corresponding location in motions
+        if loc in motions.keys():
+            motions[loc].append(s)
         else:
-            record[key] = s
-    return record
-
-
-def vector_packer(series):
-    """
-    Packs a collection of `TimeSeries` objects into a `Vector` object.
-    Uses the `component` attribute as the key of each `TimeSeries`.
-    If no `component` is found, the `"NoComponent"` key is assigned.
-    """
-    pass
+            motions[loc] = [s]
+    return motions
