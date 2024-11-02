@@ -15,9 +15,7 @@ def test_read_event():
 
 def test_unique():
     event = test_read_event()
-    all_components = [c for m in event.serieses.values() for c in m.components]
-    print(event.serieses)
-    assert len(all_components) == 20
+    assert len(event.series) == 20
 
 #----------------------------------------------------------------------
 # Time series (.v2)
@@ -25,19 +23,19 @@ def test_unique():
 def test_2():
     csmip_series = evnt.parse.v2.read_record(csmip_dir / "chan001.v2")
     with open("-", "w") as writefile:
-        json.dump(csmip_series, writefile)
+        json.dump(csmip_series.meta, writefile)
 
 def test_read():
     csmip_series = evnt.read(csmip_dir / "chan001.v2")
     with open("-", "w") as writefile:
-        json.dump(csmip_series, writefile)
+        json.dump(csmip_series.meta, writefile)
     return csmip_series
 
 def test_peak():
-    series = test_read()
-    assert series["peak_accel"] == 17.433
-    assert series["peak_veloc"] == 0.205
-    assert series["peak_displ"] == -0.004
+    meta = test_read().meta
+    assert meta["peak_accel"] == 17.433
+    assert meta["peak_veloc"] == 0.205
+    assert meta["peak_displ"] == -0.004
 
 def test_accel_data():
     series = test_read()

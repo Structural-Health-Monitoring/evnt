@@ -12,6 +12,10 @@ RE_UNITS = "[A-z,/,0-9]*"
 
 CRE_WHITE = re.compile("\\W+")
 
+# A utility to convert general strings into
+# appropriate keys.
+make_key = lambda strng: strng.strip().replace(" ", "_").lower()
+
 
 def maybe_t(pattern: str, typ: Callable, strict: bool = True):
     cpattern = re.compile(pattern, re.IGNORECASE)

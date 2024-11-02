@@ -4,6 +4,8 @@
 # Fall 2024
 """
 Parse a CSMIP V2 strong motion data file.
+Format described by CGS at
+https://www.strongmotioncenter.org/vdc/cosmos_format_1_20.pdf
 """
 import re
 import sys
@@ -19,6 +21,7 @@ from evnt.core import (
     Record,
     Vector,
     TimeSeries,
+    MetaData
 )
 
 from evnt.utils.parseutils import (
@@ -28,6 +31,7 @@ from evnt.utils.parseutils import (
     RE_UNITS,    # Regular expression for extracting units
     CRE_WHITE,
     maybe_t,
+    make_key
 )
 
 re_digits = re.compile(r"([0-9]+)")
@@ -41,10 +45,6 @@ INTEGER_HEADER_END_LINE = 25+7
 REAL_HEADER_END_LINE = 45
 
 DATEFMT = "%m/%d/%y, %H:%M" #:%S.%f %Z"
-
-# A utility to convert general strings into
-# appropriate keys.
-_make_key = lambda strng: strng.strip().replace(" ", "_").lower()
 
 # Definition of some type constructors, used to coerce
 # the result of a regex match.
@@ -82,13 +82,13 @@ HEADER_FIELDS = {
         re.compile(r"([A-z ]*) ([A-z0-9\-\.]*)", re.IGNORECASE)
     ),
     # line 5
-    ("_", "record.date"): ((str,lambda s: datetime.strptime(s.strip(),DATEFMT).isoformat(),),
+    ("_", "record.event_date"): ((str,lambda s: datetime.strptime(s.strip(),DATEFMT).isoformat(),),
         #(5,
             re.compile(r"(.*): *([0-9]{,2}/[0-9]{,2}/[0-9]{,4}, *[0-9]{2}:[0-9]{2})")#[:.0-9]{,4} [A-Z]{,4})")
         #)
     ),
     # line 6
-    ("record.station.no", "record.station.coord"): ((str, str),
+    ("record.station_number", "record.coordinates"): ((str, str),
         re.compile(
             rf"Station No\. *([0-9]*) *({RE_DECIMAL}[NSEW]*, *{RE_DECIMAL}[NSEW]*)",
             re.IGNORECASE
@@ -102,7 +102,7 @@ HEADER_FIELDS = {
         # )
     ),
     # line 8
-    ("record.channel", "record.component", "_", "record.station_channel", "record.location_name"): (
+    ("record.channel", "record.component", "_", "record.station_channel", "record.location"): (
     # ("record.channel", "record.component", "_", "_", "record.location_name"): (
         (str, str, maybe_t("(DegR*)",str), maybe_t("Sta Chn: ([0-9]*)", words), words),
         re.compile(# (  1   )   (---------)  (---)   (--)             (------)
@@ -155,13 +155,13 @@ HEADER_FIELDS = {
             re.IGNORECASE
         )
     ),
-    ("accel.shape", "accel.time_step"): ((int, float),
+    ("accel.npts", "accel.time_step"): ((int, float),
         re.compile(f"([0-9]*) *points of accel data equally spaced at *({RE_DECIMAL})", re.IGNORECASE)
     ),
-    ("veloc.shape", "veloc.time_step"): ((int, float),
+    ("veloc.npts", "veloc.time_step"): ((int, float),
         re.compile(f"([0-9]*) *points of veloc data equally spaced at *({RE_DECIMAL})", re.IGNORECASE)
     ),
-    ("displ.shape", "displ.time_step"): ((int, float),
+    ("displ.npts", "displ.time_step"): ((int, float),
         re.compile(f"([0-9]*) *points of displ data equally spaced at *({RE_DECIMAL})", re.IGNORECASE)
     ),
 }
@@ -179,10 +179,9 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
     Take the name of a CSMIP v2 zip file and extract record data for the event.
     """
 
-    components = []
     zippath    = Path(path_to_zipfile)
     archive    = zipfile.ZipFile(zippath)
-    motions    = defaultdict(Vector)
+    motions    = []
 
     v1 = False
 
@@ -198,52 +197,17 @@ def read(path_to_zipfile, verbosity=0, summarize=False, **kwds):
         v1 = True if file.endswith((".v1", ".V1")) else False
 
         series = read_record(file, archive, verbosity=verbosity, summarize=summarize, v1=v1, **kwds)
-        loc = _make_key(series.get("location_name", str(file)))
-        drn = _make_key(series.get("component", "NA"))
-
-        # Check that a Component with this direction has not already been
-        # added to the Motion container under this location. This should
-        # not happen, but is checked for robustness.
-        if drn in motions[loc].components:
-            loc += "_alt"
-
-        motions[loc]["key"] = loc
-        motions[loc].components[drn] = series
-
-
-    # EVENT-LEVEL METADATA
-    # Compute peak values over the entire archive.
-    # --------------------------------------------
-    # V1 files may not give peak values for the individual files (components), 
-    # so in this case they are computed manually.
-    if v1 and not summarize:
-        peak_accel = max(
-            (max(c.accel, key=abs) for m in motions.values() for c in m.components.values()),
-            key=abs
-        )
-
-    # Otherwise, just take the peaks from the parsed metadata.
-    else:
-        peak_accel = max(
-            (c["peak_accel"] for m in motions.values() for c in m.components.values()),
-            key=abs
-        )
+        # loc = make_key(series.meta.get("location_name", str(file)))
+        # drn = make_key(series.meta.get("component", "NA"))
+        motions.append(series)
 
     # Collect some other information from the first file (component)
-    first_motion    = list(motions.values())[0]
-    first_component = list(first_motion.components.values())[0]
+    first_motion    = motions[0]
 
-    date = first_component.get("date", "NA")
-    metadata = {
-        "file_name":         str(path_to_zipfile),
-        "peak_accel":        peak_accel,
-        "event_date":        date,
-        "station_name":      first_component.get("station_name", "NA"),
-        "station_coord":     first_component.get("station.coord", "NA"),
-        "record_identifier": first_component.get("record_identifier", "NA"),
-        "station_number":    first_component.get("station.no", "NA")
-    }
-    return Record(dict(motions), event_date=date, meta=metadata)
+    metadata = MetaData(file_name=str(path_to_zipfile))
+    metadata.update({k:v for k,v in first_motion.meta.items()
+                     if k in ['event_date','station_name','station_number','coordinates']})
+    return Record(motions, meta=metadata)
 
 
 # Fields that are not provided in the V1 format.
@@ -254,7 +218,7 @@ def read_record(
     read_file,
     archive: zipfile.ZipFile = None,
     verbosity: int  = 0,
-    summarize: bool =False,
+    summarize: bool = False,
     v1: bool = False,
     exclusions: tuple = (),
     **kwds
@@ -278,7 +242,7 @@ def read_record(
             if any(fnmatch.fnmatch(kk,x) for kk in k):
                 keys.append(k)
 
-    header_fields = {k: v for k,v in FIELDS.items() if k not in keys}
+    header_fields = {k:v for k,v in FIELDS.items() if k not in keys}
 
     # Parse header fields
     try:
@@ -287,7 +251,7 @@ def read_record(
         header_data.pop("_")
     except:
         if verbosity:
-            print("Failed to parse header data for file {filename.name}", file=sys.stderr)
+            print(f"Failed to parse header data for file {filename.name}", file=sys.stderr)
         header_data = {}
 
 
@@ -304,6 +268,8 @@ def read_record(
             max_rows=6,
             delimiter=5,
             ).flatten()
+        # Read last row of int header separately because otherwise the last
+        # call would fail when the last row has a different number of columns
         int_header = np.append(int_header , np.genfromtxt(
             f,
             dtype=int,
@@ -398,10 +364,11 @@ def read_record(
     series_data = defaultdict(dict)
 
     for key, val in header_data.items():
+        # split the key at only the first "." to determine where it goes
         typ, k = key.split(".", 1)
         if typ == "record":
             record_data.update({k: val})
-        elif typ in ["accel", "veloc", "displ"]:
+        elif typ in {"accel", "veloc", "displ"}:
             series_data[typ].update({k: val})
 
     record_data["file_name"] = filename.name
@@ -418,10 +385,25 @@ def read_record(
     except:
         pass
 
+    try:
+        record_data.update({
+            "units_displ": series_data["displ"]["units"],
+            "units_veloc": series_data["veloc"]["units"],
+            "units_accel": series_data["accel"]["units"]
+        })
+    except:
+        pass
+
+    try:
+        if series_data["accel"]["time_step"] == series_data["veloc"]["time_step"] == series_data["displ"]["time_step"]:
+            record_data["time_step"] = series_data["accel"]["time_step"]
+    except:
+        pass
+
     # The raw numeric header data hasnt been too useful
     # record_data["ihdr"] = list(int_header)
     # record_data["rhdr"] = list(real_header)
-    return TimeSeries(accel, veloc, displ, meta=record_data)
+    return TimeSeries(accel, veloc, displ, meta=MetaData(**record_data))
 
 
 def _process_numeric_headers_v2(ihdr, rhdr, txthdr):

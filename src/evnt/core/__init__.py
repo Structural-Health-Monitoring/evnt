@@ -38,8 +38,9 @@ class Record:
         
         self.meta = meta if meta is not None else MetaData()
         # possible items in meta:
-        #   'event_date': global date and time at start of record
         #   'event_id': network station event ID, e.g. 'nc72948801'
+        #   'station': station ID, e.g. '89389'
+        #   'network': network, e.g. 'CE'
         #   'building_height': height of building, if applicable
         #   'file_name': name of file,
         #                e.g 'berkeley_04jan2018_72948801_np1103p.zip'
@@ -98,7 +99,7 @@ class Record:
         consolidated = {}
         unknown_channel = []
         for s in self.series:
-            key = s.meta.get('channel',None)
+            key = s.meta.get('station_channel',None)
             if key is not None:
                 # if there isn't already a Timeseries
                 # at this channel, add it.
@@ -117,13 +118,14 @@ class Record:
                             # has this attr, warn before replacing.
                             if hasattr(existing_s,attr):
                                 if kwds.get('verbosity',0)>=0:
-                                    warnings.warn(f"Multiple TimeSeries with the key, attribute {key},{attr} were found for Record {Record}. Preceding TimeSeries will be replaced.")
+                                    warnings.warn(f"Multiple TimeSeries with the key,attribute {key},{attr} were found for Record {Record}. Preceding TimeSeries will be replaced.")
                             setattr(existing_s,attr,getattr(s,attr))
             # if the channel is not known, the TimeSeries
             # is blindly included.
             else:
                 unknown_channel.append(s)
-        self.series = list(consolidated.values()).extend(unknown_channel)
+        self.series = list(consolidated.values())
+        self.series.extend(unknown_channel)
 
 
     def append(self,series): # TODO: is it bad practice to name this the same as a list's append function?
@@ -258,6 +260,7 @@ class TimeSeries:
         #   'npts': number of time samples
         #   'time_step': length of time step
         #   'start_time': global time at start of record
+        #   'event_date': global date and time at start of record
         #   'component': direction of motion, e.g. 'vert'
         #   'channel': channel number, e.g. 3
         #   'location': location name, e.g. '4th Floor East'
@@ -274,8 +277,8 @@ class TimeSeries:
             if data is not None:
                 data = np.asarray(data)
                 assert data.ndim == 1
-                if self.npts is None:
-                    self.npts = len(data)
+                if self.meta.get('npts',None) is None:
+                    self.meta['npts'] = len(data)
 
 
     def __repr__(self):
@@ -290,19 +293,19 @@ class TimeSeries:
     @property
     def time(self,**kwds):
         if self._time is None:
-            npts = self.npts
+            npts = self.meta['npts']
             if self.start_time is None:
                 if kwds.get('verbosity',0) >= 2:
                     warnings.warn("No start time specified. Time array will begin at 0.0s.")
                 t0 = 0.0
             else:
-                t0 = self.start_time
+                t0 = self.meta['start_time']
             if self.time_step is None:
                 if kwds.get('verbosity',0) >= 2:
                     warnings.warn("No timestep given. Time array will use 1s sampling time.")
                 self._time = np.arange(t0,t0+npts,1)
             else:
-                dt = self.time_step
+                dt = self.meta['time_step']
                 self._time = np.arange(t0,t0+dt*npts,dt)
         return self._time
 
